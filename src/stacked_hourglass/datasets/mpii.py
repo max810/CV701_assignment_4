@@ -195,3 +195,33 @@ def print_mpii_validation_accuracy(preds):
         0.5 * (PCKh[lwri] + PCKh[rwri]), 0.5 * (PCKh[lhip] + PCKh[rhip]),
         0.5 * (PCKh[lkne] + PCKh[rkne]), 0.5 * (PCKh[lank] + PCKh[rank]), np.mean(PCKh)]
     ], headers='firstrow', floatfmt='0.2f'))
+
+def get_mpii_validation_accuracy(preds):
+    PCKh = evaluate_mpii_validation_accuracy(preds)
+
+    joint_names = Mpii.DATA_INFO.joint_names
+
+    head = joint_names.index('head_top')
+    lsho = joint_names.index('left_shoulder')
+    lelb = joint_names.index('left_elbow')
+    lwri = joint_names.index('left_wrist')
+    lhip = joint_names.index('left_hip')
+    lkne = joint_names.index('left_knee')
+    lank = joint_names.index('left_ankle')
+    rsho = joint_names.index('right_shoulder')
+    relb = joint_names.index('right_elbow')
+    rwri = joint_names.index('right_wrist')
+    rkne = joint_names.index('right_knee')
+    rank = joint_names.index('right_ankle')
+    rhip = joint_names.index('right_hip')
+
+    return {
+        'Head': PCKh[head],
+        'Shoulder': 0.5 * (PCKh[lsho] + PCKh[rsho]),
+        'Elbow': 0.5 * (PCKh[lelb] + PCKh[relb]),
+        'Wrist': 0.5 * (PCKh[lwri] + PCKh[rwri]),
+        'Hip': 0.5 * (PCKh[lhip] + PCKh[rhip]),
+        'Knee': 0.5 * (PCKh[lkne] + PCKh[rkne]),
+        'Ankle': 0.5 * (PCKh[lank] + PCKh[rank]),
+        'AVG': np.mean(PCKh),
+    }
