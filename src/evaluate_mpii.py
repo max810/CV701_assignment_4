@@ -59,6 +59,7 @@ def main(args):
     print('\nFinal validation PCKh scores:\n')
     print_mpii_validation_accuracy(predictions)
 
+# TODO - add WANDB WITH SPEED 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluate a stacked hourglass model.')

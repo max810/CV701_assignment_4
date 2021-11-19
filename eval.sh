@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Nov  7 14:31:35 2021
+export PYTHONPATH=/home/maksym.bekuzarov/CV701/CV701_ass4/src:$PYTHONPATH
 
-@author: mustansar
-"""
-
-python scripts/evaluate_mpii.py --arch=hg2 --image-path=dataset --model-file checkpoint/hg2/checkpoint.pth.tar
+python scripts/evaluate_mpii.py --arch=hg2 --image-path=dataset --model-file checkpoint_orig/hg2/checkpoint.pth.tar

@@ -1,4 +1,5 @@
 import argparse
+from math import log
 import os
 from datetime import datetime
 from time import perf_counter
@@ -13,7 +14,7 @@ from tqdm import trange, tqdm
 import wandb
 
 from stacked_hourglass import hg1, hg2, hg8
-from stacked_hourglass.datasets.mpii import Mpii
+from stacked_hourglass.datasets.mpii import Mpii, get_mpii_validation_accuracy
 from stacked_hourglass.train import do_training_epoch, do_validation_epoch
 from stacked_hourglass.utils.logger import Logger
 from stacked_hourglass.utils.misc import save_checkpoint, adjust_learning_rate
@@ -85,65 +86,82 @@ def main(args):
     lr = args.lr
     cum_train_time = 0
     cum_val_time = 0
-    for epoch in trange(args.start_epoch, args.epochs, desc='Overall', ascii=True):
-        lr = adjust_learning_rate(optimizer, epoch, lr, args.schedule, args.gamma)
+    try:
+        for epoch in trange(args.start_epoch, args.epochs, desc='Overall', ascii=True):
+            lr = adjust_learning_rate(optimizer, epoch, lr, args.schedule, args.gamma)
 
-        # train for one epoch
-        t1 = perf_counter()
-        train_loss, train_acc = do_training_epoch(train_loader, model, device, Mpii.DATA_INFO,
-                                                  optimizer,
-                                                  acc_joints=Mpii.ACC_JOINTS)
-        t2 = perf_counter()
-        train_time_epoch = t2 - t1
-        cum_train_time += train_time_epoch
+            # train for one epoch
+            t1 = perf_counter()
+            train_loss, train_acc = do_training_epoch(train_loader, model, device, Mpii.DATA_INFO,
+                                                    optimizer,
+                                                    acc_joints=Mpii.ACC_JOINTS)
+            t2 = perf_counter()
+            train_time_epoch = t2 - t1
+            cum_train_time += train_time_epoch
 
-        # evaluate on validation set
-        t1 = perf_counter()
-        valid_loss, valid_acc, predictions = do_validation_epoch(val_loader, model, device,
-                                                                 Mpii.DATA_INFO, False,
-                                                                 acc_joints=Mpii.ACC_JOINTS)
-        t2 = perf_counter()
-        val_time_epoch = t2 - t1
-        cum_val_time += val_time_epoch
+            if (cum_train_time / 60) > 180:
+                raise StopIteration
 
-        # print metrics
-        tqdm.write(f'[{epoch + 1:3d}/{args.epochs:3d}] lr={lr:0.2e} '
-                   f'train_loss={train_loss:0.4f} train_acc={100 * train_acc:0.2f} '
-                   f'valid_loss={valid_loss:0.4f} valid_acc={100 * valid_acc:0.2f}')
+            # evaluate on validation set
+            t1 = perf_counter()
+            valid_loss, valid_acc, predictions = do_validation_epoch(val_loader, model, device,
+                                                                    Mpii.DATA_INFO, False,
+                                                                    acc_joints=Mpii.ACC_JOINTS)
+            t2 = perf_counter()
+            val_time_epoch = t2 - t1
+            cum_val_time += val_time_epoch
 
-        # append logger file
-        logger.append([epoch + 1, lr, train_loss, valid_loss, train_acc, valid_acc])
-        logger.plot_to_file(os.path.join(args.checkpoint, 'log.svg'), ['Train Acc', 'Val Acc'])
+            # print metrics
+            tqdm.write(f'[{epoch + 1:3d}/{args.epochs:3d}] lr={lr:0.2e} '
+                    f'train_loss={train_loss:0.4f} train_acc={100 * train_acc:0.2f} '
+                    f'valid_loss={valid_loss:0.4f} valid_acc={100 * valid_acc:0.2f}')
 
-        # remember best acc and save checkpoint
-        is_best = valid_acc > best_acc
-        best_acc = max(valid_acc, best_acc)
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'arch': args.arch,
-            'state_dict': model.state_dict(),
-            'best_acc': best_acc,
-            'optimizer' : optimizer.state_dict(),
-        }, predictions, is_best, checkpoint=args.checkpoint, snapshot=args.snapshot)
+            # append logger file
+            logger.append([epoch + 1, lr, train_loss, valid_loss, train_acc, valid_acc])
+            logger.plot_to_file(os.path.join(args.checkpoint, 'log.svg'), ['Train Acc', 'Val Acc'])
 
-        wandb.log({
-            'epoch': epoch + 1, 
-            'epoch/val_acc': valid_acc, 
-            'epoch/train_acc': train_acc,
-            'epoch/loss':train_loss, 
-            'epoch/val_loss':valid_loss, 
-            'epoch/lr': lr,
-            'epoch/train_time_m': train_time_epoch / 60.0,
-            'epoch/cum_train_time_m': cum_train_time / 60.0,
-            'epoch/val_time': val_time_epoch,
-        })
+            # remember best acc and save checkpoint
+            is_best = valid_acc > best_acc
+            best_acc = max(valid_acc, best_acc)
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'arch': args.arch,
+                'state_dict': model.state_dict(),
+                'best_acc': best_acc,
+                'optimizer' : optimizer.state_dict(),
+            }, predictions, is_best, checkpoint=args.checkpoint, snapshot=args.snapshot)
+
+            logs = {            
+                'epoch': epoch + 1, 
+                'epoch/val_acc': valid_acc, 
+                'epoch/train_acc': train_acc,
+                'epoch/loss':train_loss, 
+                'epoch/val_loss':valid_loss, 
+                'epoch/lr': lr,
+                'epoch/train_time_m': train_time_epoch / 60.0,
+                'epoch/cum_train_time_m': cum_train_time / 60.0,
+                'epoch/val_time': val_time_epoch,
+            }
+
+
+            individual_join_accs = get_mpii_validation_accuracy(predictions)
+            for k, v in individual_join_accs.items():
+                logs[f'accs/{k}'] = v
+
+            wandb.log(logs)
+    
+    except StopIteration:
+        # Training time limit hit
+        pass
 
     total_training_time = cum_train_time
     average_val_time = cum_val_time / args.epochs
+    total_epochs = epoch
 
     wandb.log({
         "total_train_time_m": total_training_time / 60.0,
         "avg_val_time": average_val_time,
+        "total_epochs": total_epochs,
     })
 
     logger.close()
@@ -201,7 +219,7 @@ if __name__ == '__main__':
         project="CV701_assignment_4",
         name=f"{date}_baseline",
         entity="max810",
-        group="Baseline"
+        group="Baseline_1.10"
     )     
 
     wandb.log(vars(args))

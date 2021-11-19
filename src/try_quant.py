@@ -6,39 +6,33 @@ import os
 from torch.nn.parallel.data_parallel import DataParallel
 from torchvision.models.resnet import resnet50
 from torch.quantization import QuantStub, DeQuantStub
+from eval_speed import run_evaluation
 
 # from stacked_hourglass.model import hg2
+from stacked_hourglass import hg2
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-# class lstm_for_demonstration(nn.Module):
-#   """Elementary Long Short Term Memory style model which simply wraps nn.LSTM
-#      Not to be used for anything other than demonstration.
-#   """
-#   def __init__(self,in_dim,out_dim,depth):
-#      super(lstm_for_demonstration,self).__init__()
-#      self.lstm = nn.LSTM(in_dim,out_dim,depth)
-
-#   def forward(self,inputs,hidden):
-#      out,hidden = self.lstm(inputs,hidden)
-#      return out, hidden
 
 class Mtest(nn.Module):
-   def __init__(self):
-      super().__init__()
-      self.quant = QuantStub()
-      self.conv1 = nn.Conv2d(3, 50, (3, 3))
-      self.dequant = DeQuantStub()
-      
-   def forward(self, d):
-      x = self.quant(d)
-      x = self.conv1(x)
-      x = self.dequant(x)
+    def __init__(self):
+        super().__init__()
+        self.quant = QuantStub()
+        self.conv1 = nn.Conv2d(3, 50, (3, 3))
+        self.dequant = DeQuantStub()
 
-      return x
+    def forward(self, d):
+        x = self.quant(d)
+        x = self.conv1(x)
+        x = self.dequant(x)
+
+        return x
+
 
 torch.manual_seed(29592)  # set the seed for reproducibility
 
-#shape parameters
+
+# shape parameters
 # model_dimension=8
 # sequence_length=20
 # batch_size=1
@@ -57,19 +51,22 @@ def load_model(path):
 
     return model
 
+
 def print_size_of_model(model, label=""):
     torch.save(model.state_dict(), "temp.p")
-    size=os.path.getsize("temp.p")
-    print("model: ",label,' \t','Size (KB):', size/1e3)
+    size = os.path.getsize("temp.p")
+    print("model: ", label, ' \t', 'Size (KB):', size / 1e3)
     os.remove('temp.p')
     return size
 
 
-model = Mtest()
+baseline = load_model('../checkpoint/hg2/model_best.pth.tar')
+run_evaluation(baseline, 'cpu', '../dataset', 'baseline_cpu', 'Quantization')
+# model = Mtest()
 # random data for input
-inputs = torch.randn((1, 3, 100, 100))
-model(inputs)
- # here is our floating point instance
+# inputs = torch.randn((1, 3, 100, 100))
+# model(inputs)
+# here is our floating point instance
 # float_lstm = lstm_for_demonstration(model_dimension, model_dimension,lstm_depth)
 # DOESN'T WORK WITH Conv2D by themselves
 # m = resnet50()
@@ -102,4 +99,3 @@ model(inputs)
 
 
 # print(qmodel)
-
