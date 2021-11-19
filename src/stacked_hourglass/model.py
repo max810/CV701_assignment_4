@@ -93,7 +93,7 @@ class Hourglass(nn.Module):
         else:
             low2 = self.hg[n-1][3](low1)
         low3 = self.hg[n-1][2](low2)
-        up2 = F.interpolate(low3, scale_factor=2)
+        up2 = F.interpolate(low3, scale_factor=2.0)
         out = up1 + up2
         return out
 

@@ -1,44 +1,48 @@
-import torch
-import torch.quantization
-import torch.nn as nn
 import os
+import copy
 
+import torch
+from torch.ao.quantization.qconfig import get_default_qconfig
 from torch.nn.parallel.data_parallel import DataParallel
-from torchvision.models.resnet import resnet50
-from torch.quantization import QuantStub, DeQuantStub
-from eval_speed import run_evaluation
+from torch.quantization.quantize_fx import prepare_fx, convert_fx
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-# from stacked_hourglass.model import hg2
+from eval_speed import run_evaluation, get_model_size_kb
 from stacked_hourglass import hg2
+from stacked_hourglass.datasets.mpii import Mpii
+from stacked_hourglass.train import do_validation_step
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
+torch.set_grad_enabled(False)
 
-class Mtest(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.quant = QuantStub()
-        self.conv1 = nn.Conv2d(3, 50, (3, 3))
-        self.dequant = DeQuantStub()
+rerun = True
 
-    def forward(self, d):
-        x = self.quant(d)
-        x = self.conv1(x)
-        x = self.dequant(x)
+val_dataset = Mpii('../dataset', is_train=False)
+val_loader = DataLoader(val_dataset, batch_size=6, shuffle=False,
+                        num_workers=4, pin_memory=True)
 
-        return x
+fx_graph_mode_model_file_path = "../fx_quantized_final.pth"
+
+extra_logs = {}
 
 
-torch.manual_seed(29592)  # set the seed for reproducibility
+def run_small_validation(model, num_batches):
+    i = 0
 
+    progress = tqdm(val_loader, desc=f'Validation subset ({num_batches} batches)', total=num_batches, ascii=True, leave=True)
 
-# shape parameters
-# model_dimension=8
-# sequence_length=20
-# batch_size=1
-# lstm_depth=1
+    for input, target, meta in progress:
+        if i == num_batches:
+            break
 
-# hidden is actually is a tuple of the initial hidden state and the initial cell state
+        target_weight = meta['target_weight']
+
+        do_validation_step(model, input, target, Mpii.DATA_INFO, target_weight,
+                           flip=False)
+        i += 1
+
 
 def load_model(path):
     print('Loading model weights from file: {}'.format(path))
@@ -47,55 +51,46 @@ def load_model(path):
     model = hg2(pretrained=False)
     if sorted(state_dict.keys())[0].startswith('module.'):
         model = DataParallel(model)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
 
     return model
 
 
-def print_size_of_model(model, label=""):
-    torch.save(model.state_dict(), "temp.p")
-    size = os.path.getsize("temp.p")
-    print("model: ", label, ' \t', 'Size (KB):', size / 1e3)
-    os.remove('temp.p')
-    return size
+if __name__ == '__main__':
+    if rerun:
+        print("Re-running experiments")
+        baseline = load_model('../checkpoint/hg2/model_best.pth.tar')
+        baseline.eval()
+        model_to_quantize = copy.deepcopy(baseline.module)
+        qconfig = get_default_qconfig("fbgemm")
+        qconfig_dict = {"": qconfig}
 
+        prepared_model = prepare_fx(model_to_quantize, qconfig_dict)
+        print(prepared_model.graph)
 
-baseline = load_model('../checkpoint/hg2/model_best.pth.tar')
-run_evaluation(baseline, 'cpu', '../dataset', 'baseline_cpu', 'Quantization')
-# model = Mtest()
-# random data for input
-# inputs = torch.randn((1, 3, 100, 100))
-# model(inputs)
-# here is our floating point instance
-# float_lstm = lstm_for_demonstration(model_dimension, model_dimension,lstm_depth)
-# DOESN'T WORK WITH Conv2D by themselves
-# m = resnet50()
-# qm = torch.quantization.quantize_dynamic(
-#     m, {nn.Conv2d, nn.Linear}, dtype=torch.qint8
-# )
-# this is the call that does the work
-# quantized_lstm = torch.quantization.quantize_dynamic(
-#     float_lstm, {nn.LSTM, nn.Linear}, dtype=torch.qint8
-# )
+        # calibration
+        run_small_validation(prepared_model, 100)
 
-# show the changes that were made
-# print('Here is the floating point version of this module:')
-# print(m)
-# print('')
-# print('and now the quantized version:')
-# print(qm)
+        # run_evaluation(prepared_model, 'cpu', '../dataset', '---', '---', 'disabled')
 
-# f=print_size_of_model(m,"fp32")
-# q=print_size_of_model(qm,"int8")
-# print("{0:.2f} times smaller".format(f/q))
+        quantized_model = convert_fx(prepared_model)
+        print(quantized_model)
 
-# model = load_model('../checkpoint/hg2/checkpoint.pth.tar')
-# qmodel = torch.quantization.quantize_dynamic(model, set([torch.nn.Conv2d]), dtype=torch.qint8)
+        print("Size of model before quantization")
+        print(get_model_size_kb(baseline))
+        print("Size of model after quantization")
+        model_size = get_model_size_kb(quantized_model)
+        print(model_size)
 
-# compare the sizes
-# f=print_size_of_model(model,"fp32")
-# q=print_size_of_model(qmodel,"int8")
-# print("{0:.2f} times smaller".format(f/q))
+        extra_logs['size_kb'] = model_size
+        extra_logs['params'] = sum(p.numel() for p in baseline.parameters())  # number of parameters doesn't change
 
+        torch.jit.save(torch.jit.script(quantized_model), fx_graph_mode_model_file_path)
 
-# print(qmodel)
+    loaded_quantized_model = torch.jit.load(fx_graph_mode_model_file_path)
+
+    # warmup for JIT
+    print("JIT Warmup")
+    run_small_validation(loaded_quantized_model, 5)
+
+    run_evaluation(loaded_quantized_model, 'cpu', '../dataset', 'quant_simple', 'Quantization', extra_logs=extra_logs)

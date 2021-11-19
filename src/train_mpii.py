@@ -219,7 +219,8 @@ if __name__ == '__main__':
         project="CV701_assignment_4",
         name=f"{date}_baseline",
         entity="max810",
-        group="Baseline_1.10"
+        group="Baseline_1.10",
+        mode='disabled' if args.debug else None
     )     
 
     wandb.log(vars(args))

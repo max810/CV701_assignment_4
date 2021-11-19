@@ -1,15 +1,12 @@
-import argparse
 import os.path
 from datetime import datetime
 from time import perf_counter
 
 import torch
 import torch.backends.cudnn
-from torch.nn import DataParallel
 from torch.utils.data import DataLoader
 import wandb
 
-from stacked_hourglass import hg1, hg2, hg8
 from stacked_hourglass.datasets.mpii import Mpii, get_mpii_validation_accuracy, print_mpii_validation_accuracy
 from stacked_hourglass.train import do_validation_epoch
 
@@ -21,30 +18,25 @@ def get_model_size_kb(model):
     return size
 
 
-def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_group: str):
+def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_group: str, mode: str = None,
+                   extra_logs={}):
     date = datetime.now().strftime("%b%d_%H-%M-%S")
 
     wandb.init(
         project="CV701_assignment_4",
         name=f"{date}_{run_prefix}",
         entity="max810",
-        group=f"Evaluation_{eval_group}"
+        group=f"Evaluation_{eval_group}",
+        mode=mode,
     )
 
     model_size = get_model_size_kb(model)
     num_params = sum(p.numel() for p in model.parameters())
-    wandb.log({
-        'device': device,
-        'size_kb': model_size,
-        'params': num_params,
-    })
-
-    device = torch.device(device)
 
     # Disable gradient calculations.
     torch.set_grad_enabled(False)
 
-    model = model.to(device)
+    model = model.to(torch.device(device))
 
     # Initialise the MPII validation set dataloader.
     val_dataset = Mpii(image_path, is_train=False)
@@ -53,7 +45,7 @@ def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_gr
 
     # Generate predictions for the validation set.
     a = perf_counter()
-    _, val_acc, predictions = do_validation_epoch(val_loader, model, device, Mpii.DATA_INFO, flip=False)
+    _, val_acc, predictions = do_validation_epoch(val_loader, model, torch.device(device), Mpii.DATA_INFO, flip=False)
     b = perf_counter()
 
     val_time = b - a
@@ -66,6 +58,13 @@ def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_gr
         logs[f'accs/{k}'] = v
     logs['val_acc'] = val_acc
     logs['val_time'] = val_time
+
+    logs['device'] = device
+    logs['size_kb'] = model_size
+    logs['params'] = num_params
+
+    for k, v in extra_logs.items():
+        logs[k] = v
 
     wandb.log(logs)
 
