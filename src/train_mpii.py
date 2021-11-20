@@ -1,5 +1,4 @@
 import argparse
-from math import log
 import os
 from datetime import datetime
 from time import perf_counter
@@ -10,8 +9,8 @@ from torch.nn import DataParallel
 from torch.optim.rmsprop import RMSprop
 from torch.utils.data import DataLoader
 from tqdm import trange, tqdm
-
 import wandb
+from apex import amp
 
 from stacked_hourglass import hg1, hg2, hg8
 from stacked_hourglass.datasets.mpii import Mpii, get_mpii_validation_accuracy
@@ -27,7 +26,7 @@ def main(args):
         torch.backends.cudnn.benchmark = True
     else:
         device = torch.device('cpu')
-    
+
     # Disable gradient calculations by default.
     torch.set_grad_enabled(False)
 
@@ -42,12 +41,14 @@ def main(args):
         model = hg8(pretrained=False)
     else:
         raise Exception('unrecognised model architecture: ' + args.arch)
-    
-    model = DataParallel(model).to(device)
+
+    model = model.to(device)
     wandb.watch(model)
 
     optimizer = RMSprop(model.parameters(), lr=args.lr, momentum=args.momentum,
                         weight_decay=args.weight_decay)
+    model, optimizer = amp.initialize(model, optimizer, opt_level=args.opt_level)
+    model = DataParallel(model)
 
     best_acc = 0
 
@@ -93,8 +94,8 @@ def main(args):
             # train for one epoch
             t1 = perf_counter()
             train_loss, train_acc = do_training_epoch(train_loader, model, device, Mpii.DATA_INFO,
-                                                    optimizer,
-                                                    acc_joints=Mpii.ACC_JOINTS)
+                                                      optimizer,
+                                                      acc_joints=Mpii.ACC_JOINTS)
             t2 = perf_counter()
             train_time_epoch = t2 - t1
             cum_train_time += train_time_epoch
@@ -105,16 +106,16 @@ def main(args):
             # evaluate on validation set
             t1 = perf_counter()
             valid_loss, valid_acc, predictions = do_validation_epoch(val_loader, model, device,
-                                                                    Mpii.DATA_INFO, False,
-                                                                    acc_joints=Mpii.ACC_JOINTS)
+                                                                     Mpii.DATA_INFO, False,
+                                                                     acc_joints=Mpii.ACC_JOINTS)
             t2 = perf_counter()
             val_time_epoch = t2 - t1
             cum_val_time += val_time_epoch
 
             # print metrics
             tqdm.write(f'[{epoch + 1:3d}/{args.epochs:3d}] lr={lr:0.2e} '
-                    f'train_loss={train_loss:0.4f} train_acc={100 * train_acc:0.2f} '
-                    f'valid_loss={valid_loss:0.4f} valid_acc={100 * valid_acc:0.2f}')
+                       f'train_loss={train_loss:0.4f} train_acc={100 * train_acc:0.2f} '
+                       f'valid_loss={valid_loss:0.4f} valid_acc={100 * valid_acc:0.2f}')
 
             # append logger file
             logger.append([epoch + 1, lr, train_loss, valid_loss, train_acc, valid_acc])
@@ -128,28 +129,27 @@ def main(args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_acc': best_acc,
-                'optimizer' : optimizer.state_dict(),
+                'optimizer': optimizer.state_dict(),
             }, predictions, is_best, checkpoint=args.checkpoint, snapshot=args.snapshot)
 
-            logs = {            
-                'epoch': epoch + 1, 
-                'epoch/val_acc': valid_acc, 
+            logs = {
+                'epoch': epoch + 1,
+                'epoch/val_acc': valid_acc,
                 'epoch/train_acc': train_acc,
-                'epoch/loss':train_loss, 
-                'epoch/val_loss':valid_loss, 
+                'epoch/loss': train_loss,
+                'epoch/val_loss': valid_loss,
                 'epoch/lr': lr,
                 'epoch/train_time_m': train_time_epoch / 60.0,
                 'epoch/cum_train_time_m': cum_train_time / 60.0,
                 'epoch/val_time': val_time_epoch,
             }
 
-
             individual_join_accs = get_mpii_validation_accuracy(predictions)
             for k, v in individual_join_accs.items():
                 logs[f'accs/{k}'] = v
 
             wandb.log(logs)
-    
+
     except StopIteration:
         # Training time limit hit
         pass
@@ -209,19 +209,22 @@ if __name__ == '__main__':
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('--debug', default=False, type=bool, metavar='BOOL',
                         help='disable wandb logging')
+    parser.add_argument('--opt_level', default='O0', type=str, metavar='AMP_OPT_LEVEL',
+                        help='AMP optimization level. Default is O0 -> FP32, basically no-op.',
+                        choices=['O0', 'O1', 'O2', 'O3'])
 
-    args = parser.parse_args()         
-    
+    args = parser.parse_args()
+
     date = datetime.now().strftime("%b%d_%H-%M-%S")
     print(args)
 
     wandb.init(
         project="CV701_assignment_4",
-        name=f"{date}_baseline",
+        name=f"{date}_AMP_{args.opt_level}",
         entity="max810",
-        group="Baseline_1.10",
+        group="AMP",
         mode='disabled' if args.debug else None
-    )     
+    )
 
     wandb.log(vars(args))
 

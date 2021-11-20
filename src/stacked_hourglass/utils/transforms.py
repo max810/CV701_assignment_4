@@ -118,7 +118,7 @@ def crop(img, center, scale, res, rot=0):
                         if len(img.shape) > 2 else torch.zeros(res[0], res[1])
         else:
             img = imresize(img, [new_ht, new_wd])
-            center = center * 1.0 / torch.tensor(sf[::-1])  # Center is x, y. Sf is H,W
+            center = center * 1.0 / torch.tensor(sf[::-1], dtype=torch.float32)  # Center is x, y. Sf is H,W
             scale = [scale[0] / sf[0], scale[1] / sf[1]]
 
     # Upper left point

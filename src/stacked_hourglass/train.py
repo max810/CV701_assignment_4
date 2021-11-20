@@ -1,6 +1,7 @@
 import torch
 import torch.backends.cudnn
 import torch.nn.parallel
+from apex import amp
 from tqdm import tqdm
 
 from stacked_hourglass.loss import joints_mse_loss
@@ -19,7 +20,8 @@ def do_training_step(model, optimiser, input, target, data_info, target_weight=N
 
         # Backward pass and parameter update.
         optimiser.zero_grad()
-        loss.backward()
+        with amp.scale_loss(loss, optimiser) as scaled_loss:
+            scaled_loss.backward()
         optimiser.step()
 
     return output[-1], loss.item()
