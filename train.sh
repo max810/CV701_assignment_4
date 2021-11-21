@@ -1,6 +1,6 @@
 export PYTHONPATH=/home/maksym.bekuzarov/CV701/CV701_ass4/src:$PYTHONPATH
 
-python scripts/train_mpii.py \
+python src/train_mpii.py \
     --arch=hg2 \
     --image-path=dataset \
     --checkpoint=checkpoint/hg2 \

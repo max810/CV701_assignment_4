@@ -18,21 +18,7 @@ def get_model_size_kb(model):
     return size
 
 
-def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_group: str, mode: str = None,
-                   extra_logs={}):
-    date = datetime.now().strftime("%b%d_%H-%M-%S")
-
-    wandb.init(
-        project="CV701_assignment_4",
-        name=f"{date}_{run_prefix}",
-        entity="max810",
-        group=f"Evaluation_{eval_group}",
-        mode=mode,
-    )
-
-    model_size = get_model_size_kb(model)
-    num_params = sum(p.numel() for p in model.parameters())
-
+def run_evaluation(model, device: str, image_path: str, log_prefix: str):
     # Disable gradient calculations.
     torch.set_grad_enabled(False)
 
@@ -55,18 +41,12 @@ def run_evaluation(model, device: str, image_path: str, run_prefix: str, eval_gr
     # Report PCKh for the predictions.
     individual_join_accs = get_mpii_validation_accuracy(predictions)
     for k, v in individual_join_accs.items():
-        logs[f'accs/{k}'] = v
-    logs['val_acc'] = val_acc
-    logs['val_time'] = val_time
-
-    logs['device'] = device
-    logs['size_kb'] = model_size
-    logs['params'] = num_params
-
-    for k, v in extra_logs.items():
-        logs[k] = v
-
-    wandb.log(logs)
+        logs[f'{log_prefix}/accs/{k}'] = v
+    logs[f'{log_prefix}/val_acc'] = val_acc
+    logs[f'{log_prefix}/val_time'] = val_time
+    logs[f'{log_prefix}/device'] = device
 
     print('\nFinal validation PCKh scores:\n')
     print_mpii_validation_accuracy(predictions)
+
+    return logs
