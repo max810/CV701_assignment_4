@@ -1,3 +1,4 @@
+import copy
 import os
 from datetime import datetime
 
@@ -55,7 +56,7 @@ def run_baseline(baseline, mode):
         project="CV701_assignment_4",
         name=f"{date}_baseline",
         entity="max810",
-        group=f"Evaluation_Pruning",
+        group=f"Evaluation_Pruning_FIXED",
         mode=mode,
     )
     logs = {}
@@ -118,16 +119,16 @@ if __name__ == '__main__':
             project="CV701_assignment_4",
             name=f"{date}_{run_name}",
             entity="max810",
-            group=f"Evaluation_Pruning",
+            group=f"Evaluation_Pruning_FIXED",
             mode=mode,
         )
 
         logs = {}
         for proportion in np.linspace(0.1, 0.9, 17):  # 0.1, 0.15, ..., 0.85, 0.9
-            print(f"Pruning {run_name}, propotion {proportion}")
+            print(f"Pruning {run_name}, proportion {proportion}")
             logs['proportion/proportion'] = proportion
 
-            pruned_model = prune_func(baseline, nn.Conv2d, proportion)
+            pruned_model = prune_func(copy.deepcopy(baseline), nn.Conv2d, proportion)
             eval_logs = run_evaluation(pruned_model, 'cuda', '../dataset', 'proportion')
 
             logs.update(eval_logs)
@@ -135,3 +136,5 @@ if __name__ == '__main__':
             logs['size_compressed'] = get_model_size_compressed(pruned_model)
 
             wandb.log(logs)
+
+        wandb.finish()
