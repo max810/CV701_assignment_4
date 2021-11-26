@@ -5,7 +5,6 @@ from datetime import datetime
 import numpy as np
 import torch
 from torch import nn
-from tqdm import tqdm
 
 import wandb
 from torch.nn.utils import prune
@@ -119,12 +118,13 @@ if __name__ == '__main__':
             project="CV701_assignment_4",
             name=f"{date}_{run_name}",
             entity="max810",
-            group=f"Evaluation_Pruning_FIXED",
+            group=f"Evaluation_Pruning_FIXED_FULL",
             mode=mode,
         )
 
         logs = {}
-        for proportion in np.linspace(0.1, 0.9, 17):  # 0.1, 0.15, ..., 0.85, 0.9
+
+        for proportion in np.linspace(0.0, 1.0, 21):  # 0.0, 0.05, 0.1, 0.15, ..., 0.85, 0.9, 0.95, 1.00
             print(f"Pruning {run_name}, proportion {proportion}")
             logs['proportion/proportion'] = proportion
 

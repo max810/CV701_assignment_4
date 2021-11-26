@@ -20,6 +20,8 @@ def get_model_size_kb(model):
 
 def run_evaluation(model, device: str, image_path: str, log_prefix: str):
     # Disable gradient calculations.
+    if log_prefix:
+        log_prefix += '/'
     torch.set_grad_enabled(False)
 
     model = model.to(torch.device(device))
@@ -41,10 +43,10 @@ def run_evaluation(model, device: str, image_path: str, log_prefix: str):
     # Report PCKh for the predictions.
     individual_join_accs = get_mpii_validation_accuracy(predictions)
     for k, v in individual_join_accs.items():
-        logs[f'{log_prefix}/accs/{k}'] = v
-    logs[f'{log_prefix}/val_acc'] = val_acc
-    logs[f'{log_prefix}/val_time'] = val_time
-    logs[f'{log_prefix}/device'] = device
+        logs[f'{log_prefix}accs/{k}'] = v
+    logs[f'{log_prefix}val_acc'] = val_acc
+    logs[f'{log_prefix}val_time'] = val_time
+    logs[f'{log_prefix}device'] = device
 
     print('\nFinal validation PCKh scores:\n')
     print_mpii_validation_accuracy(predictions)
