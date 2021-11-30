@@ -5,7 +5,6 @@ from time import perf_counter
 import torch
 import torch.backends.cudnn
 from torch.utils.data import DataLoader
-import wandb
 
 from stacked_hourglass.datasets.mpii import Mpii, get_mpii_validation_accuracy, print_mpii_validation_accuracy
 from stacked_hourglass.train import do_validation_epoch

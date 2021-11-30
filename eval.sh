@@ -1,3 +1,3 @@
-export PYTHONPATH=/home/maksym.bekuzarov/CV701/CV701_ass4/src:$PYTHONPATH
+#export PYTHONPATH=/home/maksym.bekuzarov/CV701/CV701_ass4/src:$PYTHONPATH
 
-python scripts/evaluate_mpii.py --arch=hg2 --image-path=dataset --model-file checkpoint_orig/hg2/checkpoint.pth.tar
+python src/evaluate_mpii.py --image-path=dataset --model-file fx_quantized_final.pth
